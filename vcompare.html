@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Visual Comparison</title>
+  <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/2.1.1/css/bootstrap.min.css">
+   <style>
+     td.title, td.percent, td.total_sum {
+       font-family: Helvetica;
+       font-size: 10px;
+       padding: 2px;
+       min-width: 80px;
+       text-align: center;
+     }
+
+     td.percent, td.total_sum {
+       font-weight: bold;
+       font-size: 16px;
+     }
+
+     td.total_sum, td.quantity {
+       text-align: left;
+     }
+    
+     td.total_sum div, td.quantity div {
+       /*width: 80px;*/
+     }
+
+   </style>
+</head>
+<body>
+
+
+  <div class="container">
+    <h1>Visual Comparison Manager</h1>
+    <hr />
+    <div class="chart"></div>
+    <div class="page"></div>
+  </div>
+
+
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/jquery/1.8.2/jquery.min.js" type="text/javascript"></script>
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.4.2/underscore-min.js" type="text/javascript"></script>
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/backbone.js/0.9.2/backbone-min.js"></script>
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/backbone-localstorage.js/1.1.0/backbone.localStorage-min.js"></script>
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.10.3/jquery-ui.min.js"></script>
+                                                      
+  <script type="text/template" id="thing-list-template">
+    <a href="#/new" class="btn btn-primary">New</a>
+    <hr />
+    <table class="table striped">
+      <thead>
+        <tr>
+          <th>Title</th><th>Quantity</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% _.each(things, function(thing) { %>
+          <tr>
+            <td><%= htmlEncode(thing.get('title')) %></td>
+            <td class="quantity"><div><%= htmlEncode(thing.get('quantity')) %></div></td>
+            <td><a class="btn" href="#/edit/<%= thing.id %>">Edit</a></td>
+          </tr>
+        <% }); %>
+        <tr>
+            <td></td>
+            <td class="total_sum"><div><%= total_sum %></div></td>
+            <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </script>
+
+  <script type="text/template" id="thing-chart-template">
+    <table>
+     <tr>
+        <% _.each(things, function(thing) { %>
+            <td class="percent"><%= Math.floor(thing.get('quantity') / total_sum * 100) %> %</td>
+        <% }); %>
+     </tr>
+     <tr>
+        <%
+        console.log(total_sum);
+        _.each(things, function(thing, i) { %>
+            <td valign="bottom"><div class="bar" id="<%= i %>" style="height: <%= thing.get('quantity') / total_sum * 100 %>px; background-color: <%= getColor(i) %>; "></div></td>
+        <% }); %>
+     </tr>
+     <tr>
+        <% _.each(things, function(thing) { %>
+            <td class="title"><%= thing.get('title') %></td>
+        <% }); %>
+     </tr>
+    </table>
+  </script>
+
+  <script type="text/template" id="edit-thing-template">
+    <form class="edit-thing-form">
+      <legend><%= thing ? 'Edit' : 'New' %> Thing</legend>
+        <label>Title</label>
+        <input name="title" type="text" value="<%= thing ? thing.get('title') : '' %>">
+        <label>Quantity</label>
+        <input name="quantity" type="text" value="<%= thing ? thing.get('quantity') : '' %>">
+        <hr />
+       <button type="submit" class="btn"><%= thing ? 'Update' : 'Create' %></button>
+       <% if(thing) { %>
+        <input type="hidden" name="id" value="<%= thing.id %>" />
+       <button data-thing-id="<%= thing.id %>" class="btn btn-danger delete">Delete</button>
+       <% }; %>
+    </form>
+  </script>
+
+  <script>
+    function getColor(i) {
+      return ["red", "green", "blue", "violet", "yellow", "magenta", "gray", "pink", "LightSeaGreen", "orange", "black" ][i];
+    }
+
+    function htmlEncode(value){
+      return $('<div/>').text(value).html();
+    }
+    $.fn.serializeObject = function() {
+      var o = {};
+      var a = this.serializeArray();
+      $.each(a, function() {
+          if (o[this.name] !== undefined) {
+              if (!o[this.name].push) {
+                  o[this.name] = [o[this.name]];
+              }
+              o[this.name].push(this.value || '');
+          } else {
+              o[this.name] = this.value || '';
+          }
+      });
+      return o;
+    };
+
+    var Things = Backbone.Collection.extend({
+      localStorage: new Backbone.LocalStorage('things-backbone')
+
+    });
+
+    var Thing = Backbone.Model.extend({
+      localStorage: new Backbone.LocalStorage('things-backbone')
+    });
+
+    var ThingListView = Backbone.View.extend({
+      el: '.page',
+      render: function () {
+        var that = this;
+        var things = new Things();
+
+        things.fetch().done(
+          function (data) {
+            var total_sum = _.reduce(things.models, function(sum, model){ return sum + Number(model.get('quantity')); }, 0);
+            var template = _.template($('#thing-list-template').html(), {things: things.models, total_sum: total_sum});
+            that.$el.html(template);
+          }  
+        ) 
+      }
+    });
+
+    var thingListView = new ThingListView();
+
+    // TODO: use the same model
+    var ThingChartView = Backbone.View.extend({
+      el: '.chart',
+      render: function () {
+        var that = this;
+        var things = new Things();
+
+        things.fetch().done(
+          function (data) {
+            console.log(things);
+            var sorted_models = things.models.sort(function(thing1, thing2) {
+                return thing2.get('quantity') - thing1.get('quantity');
+              });
+            var total_sum = _.reduce(sorted_models, function(sum, model){ return sum + Number(model.get('quantity')); }, 0);
+            var template = _.template($('#thing-chart-template').html(), { things: sorted_models, total_sum: total_sum });
+            that.$el.html(template);
+            
+            _.each(sorted_models, function (thing, i) {
+              var percent = Math.floor(thing.get('quantity') / total_sum * 100)  ;
+              if (percent > 0) {
+                var runEffect = function() {
+                  $( ".bar#" + i ).effect( "bounce", { times: 1, distance: 3 }, 3000, runEffect )
+                };
+                setTimeout( runEffect, 1278 * Math.random());
+              }
+            });
+
+          }  
+        ) 
+      }
+    });
+
+    var thingChartView = new ThingChartView();
+
+    var ThingEditView = Backbone.View.extend({
+      el: '.page',
+      events: {
+        'submit .edit-thing-form': 'saveThing',
+        'click .delete': 'deleteThing'
+      },
+      saveThing: function (ev) {
+        var thingDetails = $(ev.currentTarget).serializeObject();
+        var thing = new Thing();
+        thing.save(thingDetails, {
+          success: function (thing) {
+            console.log('saved');
+            router.navigate('',{trigger:true});
+          }
+        });
+        return true;
+      },
+      deleteThing: function (ev) {
+        this.thing.destroy({
+          success: function () {
+            console.log('destroyed');
+            router.navigate('', {trigger:true});
+          }
+        })
+      },
+      render: function (options) {
+        var that = this;
+        if(options.id) {
+          that.thing = new Thing({id: options.id});
+          that.thing.fetch({
+            success: function (thing) {    
+              var template = _.template($('#edit-thing-template').html(), {thing: thing});
+              that.$el.html(template);
+            }
+          })
+        } else {
+          var template = _.template($('#edit-thing-template').html(), {thing: null});
+          that.$el.html(template);
+        }
+      }
+    });
+
+    var thingEditView = new ThingEditView();
+
+    var Router = Backbone.Router.extend({
+        routes: {
+          "": "home", 
+          "edit/:id": "edit",
+          "new": "edit",
+        }
+    });
+
+    var router = new Router;
+    router.on('route:home', function() {
+      thingListView.render();
+      thingChartView.render();
+    })
+    router.on('route:edit', function(id) {
+      thingEditView.render({id: id});
+    })
+    Backbone.history.start();
+  </script>
+
+
+</body>
+</html> 
+
